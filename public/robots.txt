@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://himiya.halyavka.net/sitemap-index.xml

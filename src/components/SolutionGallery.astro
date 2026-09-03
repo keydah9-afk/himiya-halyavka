@@ -1,0 +1,886 @@
+---
+/*
+  SolutionGallery — інтерактивне ГДЗ без картинок: розв'язання зберігаються текстом
+  (src/data/gdz-solutions.ts) і рендеряться у два режими:
+
+    ⚡ Списати   — чиста відповідь «як у зошиті» (клітинка) + кнопка «Скопіювати»;
+    🧠 Зрозуміти — покроковий розбір (кроки відкриваються по одному), віджети
+                   (конструктор молярної маси, самоперевірка) і лічильник прогресу.
+
+  Уся розмітка (умови, відповіді, кроки) рендериться на білді — текст індексується
+  пошуковиками. JS лише перемикає класи. Навігація — як в ExerciseGallery:
+  кнопки-номери зверху, переглядач знизу, deep-link #id, пошук, «← →».
+*/
+import type { Solution, SolutionSection, SolutionTopic } from '~/data/gdz-solutions';
+
+export interface Props {
+  id: string;
+  sections: SolutionSection[];
+  checkedNote?: string; // підпис під звіреними відповідями, напр. «Звірено з відповідями підручника (стор. 319)»
+  storageKey?: string; // ключ прогресу в localStorage (за замовч. = id)
+}
+
+const { id, sections, checkedNote = 'Звірено з відповідями підручника', storageKey = id } = Astro.props;
+
+const topicsOf = (t: SolutionTopic) => t.items;
+const allItems: Solution[] = sections.flatMap((s) =>
+  s.paragraphs.flatMap((p) => p.topics.flatMap((t) => topicsOf(t)))
+);
+const flat: string[] = allItems.map((i) => i.id);
+const first = flat[0];
+// Підпис поточного завдання: «Вправа 42» для номерів, інакше сам label
+// («с. 45», «Дослід I»); явний caption має пріоритет.
+const captionOf = (i: Solution) => i.caption ?? (/^\d+$/.test(i.label) ? `Вправа ${i.label}` : i.label);
+const firstCaption = allItems.length ? captionOf(allItems[0]) : '';
+
+// Конфіг для клієнтського скрипта: скільки частин/речовин треба «пройти», щоб вправа
+// зарахувалась у прогрес (мін. 2 частини або всі, якщо їх менше).
+const itemsCfg = allItems.map((i) => ({
+  id: i.id,
+  parts: i.parts?.length ?? 0,
+  widget: i.widget?.type ?? null,
+  subs: i.widget?.type === 'molar' ? i.widget.substances.length : 0,
+}));
+
+// Числа виводимо з десятковою комою (Ar(Cl) = 35,5) і без «хвостів» подвійної точності.
+const num = (v: number) => String(Math.round(v * 1000) / 1000).replace('.', ',');
+
+const molarSum = (parts: [string, number, number][]) => {
+  const terms = parts.map(([, ar, n]) => (n > 1 ? `${n}·${num(ar)}` : num(ar)));
+  const total = parts.reduce((a, [, ar, n]) => a + ar * n, 0);
+  return { terms: terms.join(' + '), total: num(total) };
+};
+---
+
+<div id={id} class="sol-root" data-mode="fast">
+  <!-- Зміст: кнопки-номери -->
+  <div class="sol-toc">
+    {sections.map((s) => (
+      <section class="sol-section">
+        <h2 class="sol-rozdil">{s.rozdil}</h2>
+        {s.paragraphs.map((p) => (
+          <div class="sol-para">
+            {p.title && (
+              <h3 class="sol-para-title">
+                {p.title}
+                {p.pages && <span class="sol-pages"> · {p.pages}</span>}
+              </h3>
+            )}
+            {p.topics.map((t) => (
+              <details class="sol-topic" open={!t.collapsed}>
+                <summary class="sol-summary"><span>{t.title}</span></summary>
+                <div class="sol-grid">
+                  {t.items.map((it) => (
+                    <button type="button" class="sol-btn" data-num={it.id} data-index={flat.indexOf(it.id)} data-caption={captionOf(it)}>
+                      {it.label}
+                    </button>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+        ))}
+      </section>
+    ))}
+  </div>
+
+  <!-- Перемикач режимів -->
+  <div class="sol-mode" role="group" aria-label="Режим перегляду">
+    <div class="sol-mode-row">
+      <button type="button" class="sol-mode-btn" data-mode-btn="fast" aria-pressed="true">
+        <span class="sol-mode-title">⚡ Списати</span>
+        <span class="sol-mode-sub">Готова відповідь, як у зошиті</span>
+      </button>
+      <button type="button" class="sol-mode-btn" data-mode-btn="learn" aria-pressed="false">
+        <span class="sol-mode-title">🧠 Зрозуміти</span>
+        <span class="sol-mode-sub">Покроковий розбір і самоперевірка</span>
+      </button>
+    </div>
+    <p class="sol-progress" data-progress hidden></p>
+  </div>
+
+  <!-- Переглядач -->
+  <div class="sol-viewer">
+    <div class="sol-controls">
+      <div class="sol-search">
+        <input
+          type="search"
+          class="sol-search-input"
+          data-search-input
+          placeholder="Пошук за номером"
+          inputmode="numeric"
+        />
+        <button type="button" class="sol-ctrl" data-search-btn title="Знайти">🔍</button>
+      </div>
+      <div class="sol-actions">
+        <span class="sol-current" data-current title="Поточне завдання">{firstCaption}</span>
+        <button type="button" class="sol-ctrl" data-prev title="Попереднє завдання">←</button>
+        <button type="button" class="sol-ctrl" data-next title="Наступне завдання">→</button>
+      </div>
+    </div>
+
+    {allItems.map((it) => (
+      <article class="sol-item" data-item={it.id} hidden>
+        <div class="sol-task">
+          <span class="sol-task-label">Умова</span>
+          <p class="sol-task-text" set:html={it.task} />
+          <span class="sol-done-mark" data-done-mark>✓ розібрано</span>
+        </div>
+
+        <!-- ⚡ Списати -->
+        <div class="sol-pane sol-fast">
+          <div class="sol-sheet-scroll">
+            <div class="sol-sheet" data-answer>
+              {it.answer.map((line) => (
+                <div class="sol-ans-line">{line}</div>
+              ))}
+            </div>
+          </div>
+          <div class="sol-fast-actions">
+            <button type="button" class="sol-copy" data-copy>Скопіювати відповідь</button>
+            <span class="sol-copied" data-copied>Скопійовано ✓</span>
+            {it.checked && <span class="sol-note">{checkedNote}</span>}
+          </div>
+        </div>
+
+        <!-- 🧠 Зрозуміти -->
+        <div class="sol-pane sol-learn">
+          {it.intro && <p class="sol-intro" set:html={it.intro} />}
+
+          {it.widget?.type === 'molar' && (
+            <div class="sol-molar" data-molar>
+              <div class="sol-chips">
+                {it.widget.substances.map((sub, si) => (
+                  <button type="button" class="sol-chip" data-sub-btn={si} set:html={sub.key} />
+                ))}
+              </div>
+              {it.widget.substances.map((sub, si) => {
+                const sum = molarSum(sub.parts);
+                const valSym = it.widget?.type === 'molar' ? it.widget.symbol ?? 'M' : 'M';
+                const unit = it.widget?.type === 'molar' ? it.widget.unit ?? 'г/моль' : 'г/моль';
+                return (
+                  <div class="sol-molar-row" data-sub-row={si} hidden>
+                    <div class="sol-tiles">
+                      {sub.parts.map(([sym, ar, n], pi) => (
+                        <>
+                          {pi > 0 && <span class="sol-tile-plus">+</span>}
+                          <span class="sol-tile">
+                            <span class="sol-tile-sym">{sym}</span>
+                            <span class="sol-tile-ar">A<sub>r</sub> = {num(ar)}</span>
+                            {n > 1 && <span class="sol-tile-count">×{n}</span>}
+                          </span>
+                        </>
+                      ))}
+                    </div>
+                    <p class="sol-sum">
+                      <span set:html={valSym} />(<span set:html={sub.html} />) ={' '}
+                      {sum.terms !== sum.total && <>{sum.terms} ={' '}</>}
+                      <b>{unit ? `${sum.total} ${unit}` : sum.total}</b>
+                    </p>
+                  </div>
+                );
+              })}
+              <p class="sol-molar-hint" data-molar-hint>← обери речовину, щоб побачити розклад</p>
+            </div>
+          )}
+
+          {it.parts && it.parts.length > 0 && (
+            <div class="sol-parts" data-parts>
+              {it.parts.length > 1 && (
+                <div class="sol-chips">
+                  {it.parts.map((part, pi) => (
+                    <button type="button" class="sol-chip" data-part-btn={pi}>
+                      {part.label ?? `частина ${pi + 1}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {it.parts.map((part, pi) => (
+                <div class="sol-part" data-part={pi} data-step="0" hidden>
+                  <div class="sol-steps">
+                    {part.steps.map((st) => (
+                      <div class={`sol-step${st.final ? ' sol-step-final' : ''}`}>
+                        <span class="sol-step-label" set:html={st.label} />
+                        <span set:html={st.html} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <button type="button" class="sol-next" data-next-step>Показати крок 1</button>
+            </div>
+          )}
+
+          {it.widget?.type === 'choice' && (
+            <div class="sol-choice-wrap" data-choice>
+              <p class="sol-choice-prompt" set:html={it.widget.prompt} />
+              <div class="sol-choices">
+                {it.widget.options.map((o, oi) => (
+                  <button type="button" class="sol-choice" data-choice-btn={oi} data-correct={o.correct ? '1' : '0'} set:html={o.html} />
+                ))}
+              </div>
+              {it.widget.options.map((o, oi) => (
+                <p
+                  class={`sol-choice-note${o.correct ? ' sol-choice-note-good' : ''}`}
+                  data-choice-note={oi}
+                  hidden
+                  set:html={o.note}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </article>
+    ))}
+  </div>
+</div>
+
+<script define:vars={{ id, flat, itemsCfg, storageKey }}>
+  function initSol() {
+    const root = document.getElementById(id);
+    if (!root || root.dataset.initialized === 'true') return;
+    root.dataset.initialized = 'true';
+
+    const cfg = new Map(itemsCfg.map((c) => [c.id, c]));
+    const items = new Map();
+    root.querySelectorAll('.sol-item').forEach((el) => items.set(el.dataset.item, el));
+    const curLabel = root.querySelector('[data-current]');
+    const progressEl = root.querySelector('[data-progress]');
+    let active = null; // кнопка в TOC
+    let activeId = null;
+
+    /* ---------- прогрес ---------- */
+    const doneKey = 'gdz-done:' + storageKey;
+    let done = new Set();
+    try {
+      const raw = localStorage.getItem(doneKey);
+      if (raw) done = new Set(JSON.parse(raw));
+    } catch (e) { /* приватний режим — працюємо без збереження */ }
+    const saveDone = () => {
+      try { localStorage.setItem(doneKey, JSON.stringify([...done])); } catch (e) { /* ok */ }
+    };
+    const renderProgress = () => {
+      if (!progressEl) return;
+      const total = flat.length;
+      // Прогрес зберігається на всю книгу (спільний storageKey), а сторінка показує
+      // лише свій розділ — тому рахуємо не весь набір, а перетин із цією сторінкою.
+      const n = flat.reduce((acc, key) => acc + (done.has(key) ? 1 : 0), 0);
+      progressEl.textContent =
+        'Твій прогрес: ' + n + ' із ' + total + ' розібрано' +
+        (n === total && total > 0 ? ' — красунчик! 🎉' : '');
+      items.forEach((el, key) => el.classList.toggle('sol-item-done', done.has(key)));
+    };
+    const markDone = (itemId) => {
+      if (done.has(itemId)) return;
+      done.add(itemId);
+      saveDone();
+      renderProgress();
+    };
+
+    /* ---------- режим ---------- */
+    const setMode = (m) => {
+      root.dataset.mode = m;
+      root.querySelectorAll('[data-mode-btn]').forEach((b) => {
+        b.setAttribute('aria-pressed', b.dataset.modeBtn === m ? 'true' : 'false');
+      });
+      if (progressEl) progressEl.hidden = m !== 'learn';
+      try { localStorage.setItem('halyavka-gdz-mode', m); } catch (e) { /* ok */ }
+    };
+    root.querySelectorAll('[data-mode-btn]').forEach((b) => {
+      b.addEventListener('click', () => setMode(b.dataset.modeBtn));
+    });
+    let savedMode = 'fast';
+    try { savedMode = localStorage.getItem('halyavka-gdz-mode') || 'fast'; } catch (e) { /* ok */ }
+    setMode(savedMode === 'learn' ? 'learn' : 'fast');
+
+    /* ---------- показ завдання ---------- */
+    function show(num, scroll) {
+      const target = root.querySelector('.sol-btn[data-num="' + CSS.escape(num) + '"]');
+      const item = items.get(num);
+      if (!target || !item) return;
+      items.forEach((el) => { el.hidden = true; });
+      item.hidden = false;
+      activeId = num;
+      if (curLabel) curLabel.textContent = target.dataset.caption || target.textContent.trim();
+      const det = target.closest('details');
+      if (det && !det.open) det.open = true;
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', '#' + num);
+      }
+      if (active) active.classList.remove('is-active');
+      target.classList.add('is-active');
+      active = target;
+      if (scroll) {
+        // Прокручуємо до перемикача режимів: він стоїть впритул над переглядачем,
+        // тож у кадр потрапляють і кнопки «Списати / Зрозуміти», і сама умова.
+        const anchor = root.querySelector('.sol-mode') || root.querySelector('.sol-viewer');
+        if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    function navigate(dir) {
+      const i = flat.indexOf(activeId) + dir;
+      if (i >= 0 && i < flat.length) show(flat[i], false);
+    }
+
+    function search() {
+      const input = root.querySelector('[data-search-input]');
+      const v = ((input && input.value) || '').trim();
+      if (!v) return;
+      const digits = v.replace(/\D/g, '');
+      const hit = flat.find((f) => f === v) || (digits && flat.find((f) => f.replace(/\D/g, '') === digits));
+      if (hit) {
+        show(hit, true);
+        input.value = '';
+        input.classList.remove('sol-search-err');
+      } else {
+        input.classList.add('sol-search-err');
+        setTimeout(() => input.classList.remove('sol-search-err'), 600);
+      }
+    }
+
+    root.querySelectorAll('.sol-btn').forEach((b) => {
+      b.addEventListener('click', () => show(b.dataset.num, true));
+    });
+    const prevBtn = root.querySelector('[data-prev]');
+    const nextBtn = root.querySelector('[data-next]');
+    if (prevBtn) prevBtn.addEventListener('click', () => navigate(-1));
+    if (nextBtn) nextBtn.addEventListener('click', () => navigate(1));
+    const searchBtn = root.querySelector('[data-search-btn]');
+    const searchInput = root.querySelector('[data-search-input]');
+    if (searchBtn) searchBtn.addEventListener('click', search);
+    if (searchInput) searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); search(); }
+    });
+
+    /* ---------- «Списати»: копіювання ---------- */
+    const fallbackCopy = (text) => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    };
+    items.forEach((el) => {
+      const btn = el.querySelector('[data-copy]');
+      if (!btn) return;
+      btn.addEventListener('click', () => {
+        const lines = [...el.querySelectorAll('.sol-ans-line')].map((l) => l.textContent).join('\n');
+        const flash = el.querySelector('[data-copied]');
+        const ok = () => {
+          if (!flash) return;
+          flash.classList.add('sol-copied-show');
+          setTimeout(() => flash.classList.remove('sol-copied-show'), 1600);
+        };
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(lines).then(ok, () => { fallbackCopy(lines); ok(); });
+          } else { fallbackCopy(lines); ok(); }
+        } catch (e) { try { fallbackCopy(lines); ok(); } catch (_) { /* ok */ } }
+      });
+    });
+
+    /* ---------- «Зрозуміти»: кроки ---------- */
+    items.forEach((el, itemId) => {
+      const wrap = el.querySelector('[data-parts]');
+      if (!wrap) return;
+      const parts = [...wrap.querySelectorAll('.sol-part')];
+      const chips = [...wrap.querySelectorAll('[data-part-btn]')];
+      const nextStepBtn = wrap.querySelector('[data-next-step]');
+      const finished = new Set();
+      let cur = 0;
+
+      const need = Math.min(2, parts.length); // скільки частин треба пройти для «розібрано»
+      const render = () => {
+        const part = parts[cur];
+        const steps = [...part.querySelectorAll('.sol-step')];
+        const shown = parseInt(part.dataset.step, 10) || 0;
+        steps.forEach((s, i) => s.classList.toggle('sol-step-shown', i < shown));
+        if (!nextStepBtn) return;
+        if (shown >= steps.length) {
+          nextStepBtn.textContent = 'Усі кроки відкрито ✓';
+          nextStepBtn.disabled = true;
+        } else {
+          nextStepBtn.textContent = shown === steps.length - 1 ? 'Показати відповідь' : 'Показати крок ' + (shown + 1);
+          nextStepBtn.disabled = false;
+        }
+      };
+      const select = (i) => {
+        cur = i;
+        parts.forEach((p, pi) => { p.hidden = pi !== i; });
+        chips.forEach((c, ci) => c.classList.toggle('is-active', ci === i));
+        render();
+      };
+      chips.forEach((c, ci) => c.addEventListener('click', () => select(ci)));
+      if (nextStepBtn) nextStepBtn.addEventListener('click', () => {
+        const part = parts[cur];
+        const total = part.querySelectorAll('.sol-step').length;
+        const shown = Math.min(total, (parseInt(part.dataset.step, 10) || 0) + 1);
+        part.dataset.step = String(shown);
+        if (shown >= total) {
+          finished.add(cur);
+          chips[cur] && chips[cur].classList.add('sol-chip-done');
+          if (finished.size >= need) markDone(itemId);
+        }
+        render();
+      });
+      select(0);
+    });
+
+    /* ---------- віджет «молярна маса» ---------- */
+    items.forEach((el, itemId) => {
+      const molar = el.querySelector('[data-molar]');
+      if (!molar) return;
+      const chips = [...molar.querySelectorAll('[data-sub-btn]')];
+      const rows = [...molar.querySelectorAll('[data-sub-row]')];
+      const hint = molar.querySelector('[data-molar-hint]');
+      const seen = new Set();
+      const need = Math.min(3, chips.length);
+      chips.forEach((c, ci) => c.addEventListener('click', () => {
+        chips.forEach((b, bi) => b.classList.toggle('is-active', bi === ci));
+        rows.forEach((r, ri) => { r.hidden = ri !== ci; });
+        if (hint) hint.hidden = true;
+        seen.add(ci);
+        c.classList.add('sol-chip-done');
+        if (seen.size >= need) markDone(itemId);
+      }));
+    });
+
+    /* ---------- віджет «самоперевірка» ---------- */
+    items.forEach((el, itemId) => {
+      const wrap = el.querySelector('[data-choice]');
+      if (!wrap) return;
+      const btns = [...wrap.querySelectorAll('[data-choice-btn]')];
+      const notes = [...wrap.querySelectorAll('[data-choice-note]')];
+      btns.forEach((b, bi) => b.addEventListener('click', () => {
+        const correct = b.dataset.correct === '1';
+        b.classList.add(correct ? 'sol-choice-good' : 'sol-choice-bad');
+        notes.forEach((n, ni) => { n.hidden = ni !== bi; });
+        if (correct) markDone(itemId);
+      }));
+    });
+
+    /* ---------- старт ---------- */
+    renderProgress();
+    const h = decodeURIComponent(window.location.hash.replace('#', ''));
+    show(h && flat.includes(h) ? h : flat[0], false);
+
+    root._solCleanup = () => { root.dataset.initialized = 'false'; };
+  }
+
+  document.addEventListener('astro:page-load', initSol);
+  document.addEventListener('astro:before-swap', () => {
+    const root = document.getElementById(id);
+    if (root && typeof root._solCleanup === 'function') root._solCleanup();
+  });
+  // Скрипт із define:vars Astro завжди лишає inline, тож він виконується
+  // ПОСЕРЕД парсингу сторінки — на цей момент DOM ще 'loading'. На основному
+  // сайті ініціалізацію витягує astro:page-load (View Transitions), а тут
+  // роутера немає, тому потрібен звичайний DOMContentLoaded.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initSol);
+  else initSol();
+</script>
+
+<style>
+  .sol-root { max-width: 1000px; width: 92%; margin: 1.25rem auto 0; text-align: left; }
+
+  /* ---------- перемикач режимів ---------- */
+  /* Стоїть під змістом, впритул над переглядачем — щоб перемикач був поруч
+     з тим, на що він впливає, а не за екран вище. */
+  .sol-mode {
+    border: 1px solid #d9e0e5;
+    border-radius: 0.6rem;
+    background: #fff;
+    padding: 0.7rem;
+    margin: 1.5rem 0 0;
+    scroll-margin-top: 80px;
+  }
+  .sol-mode-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .sol-mode-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+    border: 2px solid #d9e0e5;
+    background: transparent;
+    border-radius: 0.5rem;
+    padding: 0.55rem 0.8rem;
+    cursor: pointer;
+    text-align: left;
+    color: #003049;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .sol-mode-title { font-weight: 700; font-size: 1rem; }
+  .sol-mode-sub { font-size: 0.78rem; color: #6c757d; }
+  .sol-mode-btn[data-mode-btn='fast'][aria-pressed='true'] {
+    border-color: #c1121f;
+    background: #fdf0d5;
+  }
+  .sol-mode-btn[data-mode-btn='fast'][aria-pressed='true'] .sol-mode-title { color: #c1121f; }
+  .sol-mode-btn[data-mode-btn='learn'][aria-pressed='true'] {
+    border-color: #0e7c7b;
+    background: #e7f4f1;
+  }
+  .sol-mode-btn[data-mode-btn='learn'][aria-pressed='true'] .sol-mode-title { color: #0e7c7b; }
+  .sol-progress { margin: 0.5rem 0 0; font-size: 0.85rem; font-weight: 600; color: #0e7c7b; }
+
+  /* ---------- зміст (як в ExerciseGallery) ---------- */
+  .sol-rozdil {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #c1121f;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin: 1.2rem 0 0.5rem;
+  }
+  .sol-para-title { font-size: 1.02rem; font-weight: 700; color: #003049; margin: 0.7rem 0 0.35rem; }
+  .sol-pages { font-weight: 400; color: #6c757d; font-size: 0.85rem; }
+  .sol-topic {
+    border: 1px solid #d9e0e5;
+    border-radius: 0.5rem;
+    margin-bottom: 0.4rem;
+    background: #fff;
+    overflow: hidden;
+  }
+  .sol-summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.55rem 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #003049;
+    font-size: 0.95rem;
+  }
+  .sol-summary::-webkit-details-marker { display: none; }
+  .sol-summary::before { content: '▸'; color: #c1121f; font-weight: bold; margin-right: 0.4rem; transition: transform 0.15s; }
+  .sol-topic[open] .sol-summary::before { transform: rotate(90deg); }
+  .sol-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
+    gap: 0.35rem;
+    padding: 0.15rem 0.8rem 0.8rem;
+  }
+  .sol-btn {
+    border: 1px solid #003049;
+    background: #fff;
+    color: #003049;
+    border-radius: 0.3rem;
+    padding: 0.4rem 0.15rem;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background-color 0.12s, color 0.12s;
+  }
+  .sol-btn:hover, .sol-btn.is-active { background: #c1121f; color: #fff; border-color: #c1121f; }
+
+  /* ---------- переглядач ---------- */
+  .sol-viewer {
+    border: 6px solid #c1121f;
+    background: #fff;
+    box-shadow: inset 0 0 0 6px #fdf0d5, 0 4px 10px rgba(0, 0, 0, 0.18);
+    padding: 20px;
+    margin: 0.6rem auto 0;
+    scroll-margin-top: 80px;
+  }
+  .sol-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem 0.55rem;
+    margin-bottom: 0.9rem;
+  }
+  .sol-search { display: flex; align-items: center; gap: 0.4rem; }
+  .sol-search-input {
+    height: 2.4rem;
+    width: 165px;
+    min-width: 0;
+    border: 1px solid #003049;
+    border-radius: 0.25rem;
+    padding: 0 0.5rem;
+    color: #003049;
+    background: #fff;
+  }
+  .sol-search-input:focus { outline: none; border-color: #c1121f; box-shadow: 0 0 0 2px rgba(193, 18, 31, 0.3); }
+  .sol-search-input.sol-search-err { border-color: #c1121f; animation: sol-shake 0.5s ease-in-out; }
+  @keyframes sol-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+  .sol-actions { display: flex; align-items: center; gap: 0.4rem; }
+  .sol-current { font-weight: bold; color: #c1121f; font-size: 1.02rem; white-space: nowrap; padding-right: 0.2rem; }
+  .sol-ctrl {
+    background: #003049;
+    color: #fff;
+    height: 2.4rem;
+    min-width: 2.4rem;
+    padding: 0 0.55rem;
+    border: none;
+    border-radius: 0.25rem;
+    font-weight: bold;
+    font-size: 1.15rem;
+    cursor: pointer;
+    transition: background-color 0.15s, transform 0.1s;
+  }
+  .sol-ctrl:hover { background: #c1121f; transform: translateY(-1px); }
+
+  /* ---------- завдання ---------- */
+  .sol-task { margin-bottom: 0.9rem; }
+  .sol-task-label {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6c757d;
+    margin-bottom: 0.15rem;
+  }
+  .sol-task-text { margin: 0; color: #003049; font-size: 1rem; line-height: 1.5; }
+  .sol-done-mark { display: none; color: #1e7b34; font-weight: 700; font-size: 0.85rem; }
+  .sol-item-done .sol-done-mark { display: inline-block; margin-top: 0.25rem; }
+
+  /* режими: показуємо потрібну панель */
+  .sol-pane { display: none; }
+  .sol-root[data-mode='fast'] .sol-fast { display: block; }
+  .sol-root[data-mode='learn'] .sol-learn { display: block; }
+  @media (prefers-reduced-motion: no-preference) {
+    .sol-pane { animation: sol-fade 0.25s ease; }
+    @keyframes sol-fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+  }
+
+  /* ---------- «Списати»: аркуш у клітинку ---------- */
+  .sol-sheet-scroll { overflow-x: auto; border-radius: 0.5rem; }
+  .sol-sheet {
+    /* fit-content + min-width: 100% — аркуш або на всю ширину контейнера (рядки
+       переносяться), або по ширині найдовшого нерозривного слова (тоді працює
+       горизонтальний скрол). В обох випадках клітинки покривають увесь вміст. */
+    width: fit-content;
+    min-width: 100%;
+    border: 1px solid #cfe0ef;
+    border-radius: 0.5rem;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 23px, #dce7f2 23px, #dce7f2 24px),
+      repeating-linear-gradient(90deg, transparent, transparent 23px, #dce7f2 23px, #dce7f2 24px),
+      #f7fafd;
+    padding: 16px 16px 14px;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.92rem;
+    font-weight: 500;
+    line-height: 24px;
+    color: #17384f;
+  }
+  /* pre-wrap, а не pre: ручні переноси й відступи зберігаються, але задовгий
+     рядок переноситься на вузькому екрані замість того, щоб вилізти за край.
+     Висячий відступ показує, що це продовження рядка, а не новий рядок. */
+  .sol-ans-line {
+    white-space: pre-wrap;
+    min-height: 24px;
+    padding-left: 1.5em;
+    text-indent: -1.5em;
+  }
+  .sol-fast-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.7rem; }
+  .sol-copy {
+    background: #c1121f;
+    color: #fff;
+    border: none;
+    border-radius: 0.4rem;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background-color 0.15s, transform 0.1s;
+  }
+  .sol-copy:hover { background: #a10e1a; }
+  .sol-copy:active { transform: scale(0.97); }
+  .sol-copied { color: #1e7b34; font-size: 0.85rem; font-weight: 600; opacity: 0; transition: opacity 0.25s; }
+  .sol-copied-show { opacity: 1; }
+  .sol-note { font-size: 0.78rem; color: #6c757d; }
+
+  /* ---------- «Зрозуміти» ---------- */
+  .sol-intro { margin: 0 0 0.8rem; color: #33505f; font-size: 0.93rem; line-height: 1.5; }
+  .sol-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.8rem; }
+  .sol-chip {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    background: #f1f3f5;
+    color: #003049;
+    border: 1.5px solid transparent;
+    border-radius: 999px;
+    padding: 0.4rem 0.8rem;
+    cursor: pointer;
+    transition: border-color 0.12s;
+  }
+  .sol-chip:hover { border-color: #98a7b3; }
+  .sol-chip.is-active { border-color: #0e7c7b; background: #e7f4f1; color: #0e7c7b; font-weight: 700; }
+  .sol-chip-done::after { content: ' ✓'; color: #1e7b34; }
+
+  .sol-tiles { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; margin-bottom: 0.6rem; }
+  .sol-tile {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    width: 76px;
+    border: 1.5px solid #c9d4dc;
+    border-radius: 0.5rem;
+    background: #fbfcfd;
+    padding: 0.4rem 0.5rem;
+  }
+  .sol-tile-sym { font-weight: 800; font-size: 1.25rem; color: #003049; line-height: 1.2; }
+  .sol-tile-ar { font-size: 0.68rem; color: #6c757d; font-family: ui-monospace, Menlo, monospace; }
+  .sol-tile-count {
+    position: absolute;
+    top: -0.55rem;
+    right: -0.55rem;
+    background: #0e7c7b;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border-radius: 999px;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    display: grid;
+    place-items: center;
+    padding: 0 0.3rem;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .sol-tile-plus { color: #98a7b3; font-weight: 700; }
+  .sol-sum {
+    margin: 0 0 0.5rem;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.9rem;
+    background: #f7fafd;
+    border: 1px solid #dce7f2;
+    border-radius: 0.5rem;
+    padding: 0.55rem 0.8rem;
+    color: #17384f;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .sol-sum b { color: #0e7c7b; }
+  .sol-molar-hint { margin: 0 0 0.5rem; font-size: 0.85rem; color: #6c757d; }
+
+  .sol-steps { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.7rem; }
+  .sol-step {
+    display: none;
+    border-left: 3px solid #0e7c7b;
+    background: #e7f4f1;
+    border-radius: 0 0.5rem 0.5rem 0;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.92rem;
+    color: #17384f;
+    line-height: 1.5;
+  }
+  .sol-step-shown { display: block; }
+  .sol-step-label {
+    display: block;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #0e7c7b;
+    margin-bottom: 0.1rem;
+  }
+  .sol-step-final { border-left-color: #1e7b34; background: #e9f5ec; }
+  .sol-step-final .sol-step-label { color: #1e7b34; }
+  .sol-next {
+    background: #0e7c7b;
+    color: #fff;
+    border: none;
+    border-radius: 0.4rem;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+  .sol-next:hover { background: #0a5f5e; }
+  .sol-next:disabled { opacity: 0.45; cursor: default; }
+
+  .sol-choice-wrap { margin-top: 0.9rem; }
+  .sol-choice-prompt { margin: 0 0 0.5rem; font-size: 0.93rem; font-weight: 600; color: #003049; }
+  .sol-choices { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.4rem; }
+  .sol-choice {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.95rem;
+    font-weight: 700;
+    border: 1.5px solid #c9d4dc;
+    background: #fbfcfd;
+    color: #003049;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+  }
+  .sol-choice-good { border-color: #1e7b34; background: #e9f5ec; color: #1e7b34; }
+  .sol-choice-bad { border-color: #c1121f; background: #fbeaea; color: #c1121f; }
+  .sol-choice-note { margin: 0; font-size: 0.88rem; color: #c1121f; }
+  .sol-choice-note-good { color: #1e7b34; font-weight: 600; }
+
+  sub { font-size: 0.7em; }
+
+  .sol-btn:focus-visible, .sol-chip:focus-visible, .sol-mode-btn:focus-visible,
+  .sol-copy:focus-visible, .sol-next:focus-visible, .sol-choice:focus-visible, .sol-ctrl:focus-visible {
+    outline: 2px solid #1d6fa5;
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 600px) {
+    .sol-root { width: 98%; }
+    .sol-viewer { padding: 12px; }
+    .sol-grid { grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); }
+    .sol-mode-sub { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sol-pane { animation: none; }
+  }
+
+  /* ---------- темна тема ---------- */
+  :global(.dark) .sol-mode { background: #001f30; border-color: #0b3a55; }
+  :global(.dark) .sol-mode-btn { border-color: #0b3a55; color: #fdf0d5; }
+  :global(.dark) .sol-mode-sub { color: #9fb3c0; }
+  :global(.dark) .sol-mode-btn[data-mode-btn='fast'][aria-pressed='true'] { background: #39232a; border-color: #ff6b6b; }
+  :global(.dark) .sol-mode-btn[data-mode-btn='fast'][aria-pressed='true'] .sol-mode-title { color: #ff6b6b; }
+  :global(.dark) .sol-mode-btn[data-mode-btn='learn'][aria-pressed='true'] { background: #10312f; border-color: #3cb8af; }
+  :global(.dark) .sol-mode-btn[data-mode-btn='learn'][aria-pressed='true'] .sol-mode-title { color: #3cb8af; }
+  :global(.dark) .sol-progress { color: #3cb8af; }
+  :global(.dark) .sol-rozdil { color: #ff6b6b; }
+  :global(.dark) .sol-para-title { color: #fdf0d5; }
+  :global(.dark) .sol-topic { background: #001f30; border-color: #0b3a55; }
+  :global(.dark) .sol-summary { color: #fdf0d5; }
+  :global(.dark) .sol-btn { background: #001f30; color: #fdf0d5; border-color: #0b3a55; }
+  :global(.dark) .sol-btn:hover, :global(.dark) .sol-btn.is-active { background: #c1121f; color: #fff; border-color: #c1121f; }
+  :global(.dark) .sol-viewer { border-color: #8d0000; background: #012c42; box-shadow: inset 0 0 0 6px #0b3a55, 0 4px 10px rgba(0, 0, 0, 0.4); }
+  :global(.dark) .sol-search-input { background: #001f30; color: #fdf0d5; border-color: #0b3a55; }
+  :global(.dark) .sol-task-text { color: #fdf0d5; }
+  :global(.dark) .sol-task-label { color: #9fb3c0; }
+  :global(.dark) .sol-sheet {
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 23px, #14405c 23px, #14405c 24px),
+      repeating-linear-gradient(90deg, transparent, transparent 23px, #14405c 23px, #14405c 24px),
+      #072a3f;
+    border-color: #14405c;
+    color: #e8eef2;
+  }
+  :global(.dark) .sol-note { color: #9fb3c0; }
+  :global(.dark) .sol-intro { color: #cdd9e1; }
+  :global(.dark) .sol-chip { background: #0b3a55; color: #e8eef2; }
+  :global(.dark) .sol-chip.is-active { background: #10312f; border-color: #3cb8af; color: #3cb8af; }
+  :global(.dark) .sol-tile { background: #072a3f; border-color: #14405c; }
+  :global(.dark) .sol-tile-sym { color: #fdf0d5; }
+  :global(.dark) .sol-tile-ar { color: #9fb3c0; }
+  :global(.dark) .sol-sum { background: #072a3f; border-color: #14405c; color: #e8eef2; }
+  :global(.dark) .sol-sum b { color: #3cb8af; }
+  :global(.dark) .sol-molar-hint { color: #9fb3c0; }
+  :global(.dark) .sol-step { background: #10312f; color: #dcece9; border-left-color: #3cb8af; }
+  :global(.dark) .sol-step-label { color: #3cb8af; }
+  :global(.dark) .sol-step-final { background: #143622; border-left-color: #5fbf77; }
+  :global(.dark) .sol-step-final .sol-step-label { color: #5fbf77; }
+  :global(.dark) .sol-choice { background: #072a3f; border-color: #14405c; color: #fdf0d5; }
+  :global(.dark) .sol-choice-good { background: #143622; border-color: #5fbf77; color: #5fbf77; }
+  :global(.dark) .sol-choice-bad { background: #39232a; border-color: #ff6b6b; color: #ff6b6b; }
+  :global(.dark) .sol-choice-note { color: #ff8a8a; }
+  :global(.dark) .sol-choice-note-good { color: #5fbf77; }
+  :global(.dark) .sol-done-mark { color: #5fbf77; }
+  :global(.dark) .sol-current { color: #ff6b6b; }
+</style>

@@ -1,0 +1,142 @@
+---
+/*
+  Книга цілком на одному URL: обидва режими («Списати» / «Зрозуміти»), тренажер,
+  прогрес у localStorage. Сторінка важка (кілька мегабайтів розмітки) — і це
+  свідомий вибір: один URL збирає всі поведінкові й посилальні сигнали, а розбір
+  віддається одразу, без переходів. Легка версія з готовими відповідями-картинками
+  живе на halyavka.net і посилається сюди.
+*/
+import Base from '~/layouts/Base.astro';
+import Breadcrumbs from '~/components/Breadcrumbs.astro';
+import BookHero from '~/components/BookHero.astro';
+import SolutionGallery from '~/components/SolutionGallery.astro';
+import ChemTrainer from '~/components/ChemTrainer.astro';
+import { SITE } from '~/data/site';
+import { books } from '~/data/books';
+import { meta, sections, trainerPool, exercisesCount, rozdilyPlanned } from '~/data/grygorovych-himiya-8';
+
+const book = books.find((b) => b.slug === 'grygorovych')!;
+const title = 'ГДЗ хімія 8 клас — Григорович: покроковий розбір';
+const description =
+  'Розбір усіх завдань підручника «Хімія, 8 клас» О. Григоровича, О. Недоруба: не просто відповідь, а шлях до неї — формула, підстановка, перевірка. Два режими, тренажер задач і самоперевірка. Розрахункові відповіді звірено з підручником.';
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Book',
+    name: 'Хімія, 8 клас',
+    author: { '@type': 'Person', name: meta.author },
+    publisher: { '@type': 'Organization', name: meta.publisher },
+    datePublished: String(meta.year),
+    inLanguage: 'uk',
+    image: new URL(book.cover, SITE.url).href,
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: title,
+    description,
+    dateModified: meta.updatedAt,
+    isPartOf: { '@type': 'WebSite', name: SITE.name, url: SITE.url },
+  },
+];
+---
+
+<Base title={`${title} | ${SITE.domain}`} {description} type="book" image={book.cover} {jsonLd}>
+  <Breadcrumbs
+    items={[
+      { name: 'Головна', href: '/' },
+      { name: '8 клас', href: '/8-klas/grygorovych/' },
+      { name: 'Хімія, Григорович' },
+    ]}
+  />
+
+  <BookHero
+    title="ГДЗ хімія 8 клас — Григорович"
+    authorFull={meta.author}
+    publisher={meta.publisher}
+    city={meta.city}
+    year={meta.year}
+    program={meta.program}
+    grif={meta.grif}
+    cover={book.cover}
+    count={exercisesCount}
+    updatedAt={meta.updatedAt}
+    mirror={book.mirror}
+    description={description}
+  />
+
+  <SolutionGallery
+    id="himiya8"
+    sections={sections}
+    storageKey="himiya8"
+    checkedNote="Звірено з відповідями підручника (стор. 319)"
+  />
+
+  <section class="wrap soon">
+    <h2 class="soon__title">Що далі</h2>
+    <ul class="soon__list">
+      {rozdilyPlanned.map((r) => (
+        <li class="soon__item">
+          <span class="soon__num">{r.num}</span>
+          <span>
+            <b>{r.title.replace(/^Розділ\s*\d+\.\s*/, '')}</b>
+            <span class="soon__note"> — розв'язання {r.note}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  <div class="wrap">
+    <ChemTrainer id="himiya8-trainer" pool={trainerPool} />
+  </div>
+
+  <div class="wrap actions">
+    <a class="btn btn--ghost" href={book.mirror}>⚡ Готові відповіді картинками</a>
+    <a class="btn" href="/">Інші книги з хімії</a>
+  </div>
+</Base>
+
+<style>
+  .soon {
+    margin-top: 1.6rem;
+  }
+  .soon__title {
+    margin: 0 0 0.6rem;
+    font-size: 1.05rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--red);
+  }
+  .soon__list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.5rem; }
+  .soon__item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.8rem;
+    border: 2px dashed var(--line);
+    border-radius: 10px;
+    opacity: 0.85;
+  }
+  .soon__num {
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--line);
+    color: var(--muted);
+    font-weight: 800;
+  }
+  .soon__note { color: var(--muted); }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    justify-content: center;
+    margin-top: 1.6rem;
+  }
+</style>

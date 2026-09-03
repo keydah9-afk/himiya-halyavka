@@ -1,0 +1,18 @@
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.processing.html]
+  pretty_urls = false
+
+[[headers]]
+  for = "/_astro/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Технічний домен Netlify віддає той самий сайт, що й піддомен, — це дублі в пошуку.
+[[redirects]]
+  from = "https://himiya-halyavka.netlify.app/*"
+  to = "https://himiya.halyavka.net/:splat"
+  status = 301
+  force = true

@@ -1,0 +1,52 @@
+---
+import { SITE } from '~/data/site';
+
+export interface Props {
+  title: string;
+  description?: string;
+  image?: string;
+  type?: 'website' | 'book' | 'article';
+  noindex?: boolean;
+  jsonLd?: object | object[];
+}
+
+const { title, description = SITE.description, image, type = 'website', noindex, jsonLd } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site ?? SITE.url).href;
+const ogImage = image ? new URL(image, Astro.site ?? SITE.url).href : undefined;
+const blocks = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+---
+
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title}</title>
+<meta name="description" content={description} />
+<link rel="canonical" href={canonical} />
+{noindex && <meta name="robots" content="noindex, follow" />}
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="/favicon.ico" sizes="any" />
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="sitemap" href="/sitemap-index.xml" />
+
+<meta property="og:site_name" content={SITE.name} />
+<meta property="og:type" content={type} />
+<meta property="og:title" content={title} />
+<meta property="og:description" content={description} />
+<meta property="og:url" content={canonical} />
+<meta property="og:locale" content="uk_UA" />
+{ogImage && <meta property="og:image" content={ogImage} />}
+<meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+
+{blocks.map((b) => <script type="application/ld+json" set:html={JSON.stringify(b)} />)}
+
+{/* Тему ставимо ДО першого малювання, інакше на секунду блимає світлий фон. */}
+<script is:inline>
+  (function () {
+    try {
+      var t = localStorage.getItem('halyavka-theme');
+      if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        document.documentElement.classList.add('dark');
+      }
+    } catch (e) {}
+  })();
+</script>

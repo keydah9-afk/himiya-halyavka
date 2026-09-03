@@ -1,0 +1,183 @@
+---
+/*
+  Головна піддомена: вітрина книг з хімії. Будується з src/data/books.ts —
+  щоб додати книгу, досить дописати запис туди й покласти сторінку в pages/.
+*/
+import Base from '~/layouts/Base.astro';
+import { SITE } from '~/data/site';
+import { books } from '~/data/books';
+
+const ready = books.filter((b) => b.ready);
+const soon = books.filter((b) => !b.ready);
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: SITE.name,
+  url: SITE.url,
+  description: SITE.description,
+  inLanguage: 'uk',
+  isPartOf: { '@type': 'WebSite', name: 'halyavka.net', url: SITE.parent.url },
+};
+---
+
+<Base title={`${SITE.title} | ${SITE.domain}`} description={SITE.description} {jsonLd}>
+  <section class="hero wrap">
+    <h1 class="hero__h1">Хімія: не просто відповідь, а звідки вона взялася</h1>
+    <p class="hero__lead">
+      Кожне завдання розібране покроково: що дано, яка формула, чому саме вона, куди підставляти
+      і як перевірити результат. Є режим «⚡ Списати» — чиста відповідь, як у зошиті, —
+      і режим «🧠 Зрозуміти» з кроками, віджетами й тренажерами.
+    </p>
+    <p class="hero__note">
+      Потрібні тільки готові відповіді, без пояснень? Вони на
+      <a href={SITE.parent.url}>halyavka.net</a> — там ГДЗ з усіх предметів.
+    </p>
+  </section>
+
+  <section class="wrap">
+    <h2 class="sec">Розібрані книги</h2>
+    <ul class="cards">
+      {ready.map((b) => (
+        <li>
+          <a class="card" href={`/${b.klas}-klas/${b.slug}/`}>
+            {b.cover ? (
+              <img class="card__cover" src={b.cover} alt={`Хімія ${b.klas} клас, ${b.author}`} width="110" height="156" loading="lazy" />
+            ) : (
+              <span class="card__cover card__cover--stub" aria-hidden="true">🧪</span>
+            )}
+            <span class="card__body">
+              <b class="card__title">Хімія {b.klas} клас</b>
+              <span class="card__author">{b.author}</span>
+              <span class="card__pub">{b.publisher}, {b.year}</span>
+              {b.count && <span class="card__count">{b.count} завдань розібрано</span>}
+              {b.progress && <span class="card__progress">{b.progress}</span>}
+            </span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  </section>
+
+  {soon.length > 0 && (
+    <section class="wrap">
+      <h2 class="sec">У роботі</h2>
+      <ul class="cards">
+        {soon.map((b) => (
+          <li>
+            <div class="card card--soon" aria-disabled="true">
+              <span class="card__cover card__cover--stub" aria-hidden="true">🧪</span>
+              <span class="card__body">
+                <b class="card__title">Хімія {b.klas} клас</b>
+                <span class="card__author">{b.author}</span>
+                <span class="card__pub">{b.publisher}, {b.year}</span>
+                <span class="card__count">{b.note}</span>
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )}
+
+  <section class="wrap how">
+    <h2 class="sec">Як це влаштовано</h2>
+    <div class="how__grid">
+      <div class="how__item">
+        <span class="how__ico">⚡</span>
+        <b>Списати</b>
+        <p>Готова відповідь так, як її пишуть у зошиті: дано, рівняння, розрахунок, відповідь. Одна кнопка — і текст у буфері.</p>
+      </div>
+      <div class="how__item">
+        <span class="how__ico">🧠</span>
+        <b>Зрозуміти</b>
+        <p>Той самий приклад по кроках. Кроки відкриваються по одному, тож можна зупинитися там, де загубився.</p>
+      </div>
+      <div class="how__item">
+        <span class="how__ico">🎲</span>
+        <b>Тренажер</b>
+        <p>Задача з тими самими формулами, але новими числами щоразу. Завчити відповідь неможливо — тільки зрозуміти.</p>
+      </div>
+      <div class="how__item">
+        <span class="how__ico">✓</span>
+        <b>Звірено</b>
+        <p>Розрахункові відповіді прогнані скриптом проти ключа підручника. Де підручник помилився — так і написано.</p>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .hero { padding: 1.4rem 0 0.5rem; }
+  .hero__h1 { margin: 0 0 0.6rem; font-size: 1.9rem; color: var(--red); }
+  .hero__lead { margin: 0 0 0.5rem; font-size: 1.05rem; max-width: 62ch; }
+  .hero__note { margin: 0; color: var(--muted); }
+
+  .sec {
+    margin: 1.6rem 0 0.7rem;
+    font-size: 1.05rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    color: var(--navy);
+  }
+  :global(html.dark) .sec { color: var(--cream); }
+
+  .cards {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.8rem;
+  }
+  .card {
+    display: flex;
+    gap: 0.8rem;
+    align-items: flex-start;
+    height: 100%;
+    padding: 0.8rem;
+    border: 3px solid var(--red);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--fg);
+    text-decoration: none;
+    transition: transform 0.15s, box-shadow 0.15s, background-color 0.15s;
+  }
+  a.card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15); background: var(--cream); color: var(--navy); }
+  .card--soon { border-color: var(--line); border-style: dashed; opacity: 0.75; }
+  .card__cover { flex: 0 0 auto; width: 82px; height: auto; border-radius: 6px; }
+  .card__cover--stub {
+    width: 82px;
+    height: 110px;
+    display: grid;
+    place-items: center;
+    font-size: 2rem;
+    background: var(--line);
+    border-radius: 6px;
+  }
+  .card__body { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+  .card__title { font-size: 1.05rem; }
+  .card__author { font-weight: 600; }
+  .card__pub, .card__count, .card__progress { font-size: 0.85rem; color: var(--muted); }
+  .card__count { color: var(--red); font-weight: 600; }
+  a.card:hover .card__pub, a.card:hover .card__progress { color: #4a5a66; }
+
+  .how__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.8rem;
+  }
+  .how__item {
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    padding: 0.8rem;
+    background: var(--card);
+  }
+  .how__ico { font-size: 1.5rem; display: block; }
+  .how__item b { display: block; margin: 0.2rem 0 0.25rem; }
+  .how__item p { margin: 0; font-size: 0.92rem; color: var(--muted); }
+
+  @media (max-width: 560px) {
+    .hero__h1 { font-size: 1.5rem; }
+  }
+</style>

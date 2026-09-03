@@ -1,0 +1,90 @@
+---
+import { SITE } from '~/data/site';
+---
+
+<header class="hdr">
+  <div class="wrap hdr__in">
+    <a class="hdr__logo" href="/">
+      <span class="hdr__mark">🧪</span>
+      <span class="hdr__name">Хімія<span class="hdr__dot">·</span>Халявка</span>
+    </a>
+
+    <nav class="hdr__nav">
+      <a href="/8-klas/grygorovych/">8 клас</a>
+      <a class="hdr__parent" href={SITE.parent.url}>усі ГДЗ на halyavka.net &rarr;</a>
+      <button type="button" class="hdr__theme" data-theme-toggle aria-label="Перемкнути тему">🌗</button>
+    </nav>
+  </div>
+</header>
+
+<script is:inline>
+  (function () {
+    function bind() {
+      var b = document.querySelector('[data-theme-toggle]');
+      if (!b || b.dataset.bound) return;
+      b.dataset.bound = '1';
+      b.addEventListener('click', function () {
+        var dark = document.documentElement.classList.toggle('dark');
+        try {
+          localStorage.setItem('halyavka-theme', dark ? 'dark' : 'light');
+        } catch (e) {}
+      });
+    }
+    bind();
+    document.addEventListener('astro:page-load', bind);
+  })();
+</script>
+
+<style>
+  .hdr {
+    border-bottom: 3px solid var(--red);
+    background: var(--card);
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+  .hdr__in {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    min-height: 58px;
+    flex-wrap: wrap;
+  }
+  .hdr__logo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    text-decoration: none;
+    color: var(--navy);
+    font-weight: 800;
+    font-size: 1.15rem;
+  }
+  :global(html.dark) .hdr__logo { color: var(--cream); }
+  .hdr__mark { font-size: 1.35rem; }
+  .hdr__dot { color: var(--red); margin: 0 0.15rem; }
+  .hdr__nav {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    font-size: 0.95rem;
+  }
+  .hdr__nav a { color: var(--navy); text-decoration: none; font-weight: 600; }
+  :global(html.dark) .hdr__nav a { color: var(--cream); }
+  .hdr__nav a:hover { color: var(--red); }
+  .hdr__parent { font-weight: 500 !important; opacity: 0.85; }
+  .hdr__theme {
+    border: 2px solid var(--line);
+    background: transparent;
+    border-radius: 8px;
+    width: 36px;
+    height: 32px;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  @media (max-width: 560px) {
+    .hdr__in { min-height: 52px; padding: 0.4rem 0; }
+    .hdr__parent { display: none; }
+  }
+</style>

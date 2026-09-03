@@ -1,0 +1,266 @@
+---
+/*
+  ChemTrainer — тренажер «задача з новими числами» (хімія: n = m/M та m = n·M).
+  Числа генеруються щоразу нові, тому завчити відповідь неможливо — тільки зрозуміти.
+  Пул речовин передається з даних книги (TrainerSubstance[]); кількості речовини
+  підібрано так, щоб маси виходили «круглими» і рахувались усно.
+*/
+import type { TrainerSubstance } from '~/data/gdz-solutions';
+
+export interface Props {
+  id: string;
+  pool: TrainerSubstance[];
+  title?: string;
+  subtitle?: string;
+}
+
+const {
+  id,
+  pool,
+  title = '🎲 Тренажер: задача з новими числами',
+  subtitle = 'Завтра самостійна? Числа в задачі щоразу нові, тож завчити відповідь не вийде — тільки зрозуміти. Розв’яжи три поспіль — і тему можна не боятися.',
+} = Astro.props;
+---
+
+<div id={id} class="tr-root">
+  <p class="tr-tag">Тільки на Халявці</p>
+  <h2 class="tr-title">{title}</h2>
+  <p class="tr-sub">{subtitle}</p>
+
+  <p class="tr-task" data-task>Завантаження…</p>
+
+  <div class="tr-input-row">
+    <input class="tr-input" data-input type="text" inputmode="decimal" autocomplete="off" aria-label="Твоя відповідь" />
+    <span class="tr-unit" data-unit></span>
+    <button type="button" class="tr-btn tr-btn-solid" data-check>Перевірити</button>
+    <button type="button" class="tr-btn tr-btn-subtle" data-new>Нове завдання</button>
+  </div>
+
+  <p class="tr-feedback" data-feedback></p>
+
+  <div class="tr-steps" data-steps hidden>
+    <div class="tr-step"><span class="tr-step-label">Крок 1 · Молярна маса</span><span data-step-m></span></div>
+    <div class="tr-step"><span class="tr-step-label">Крок 2 · Формула</span><span data-step-f></span></div>
+    <div class="tr-step tr-step-final"><span class="tr-step-label">Відповідь</span><span data-step-a></span></div>
+  </div>
+
+  <div class="tr-bottom">
+    <button type="button" class="tr-btn" data-show>Показати розв'язання</button>
+    <span class="tr-streak" data-streak></span>
+  </div>
+</div>
+
+<script define:vars={{ id, pool }}>
+  function initTrainer() {
+    const root = document.getElementById(id);
+    if (!root || root.dataset.initialized === 'true') return;
+    root.dataset.initialized = 'true';
+
+    const el = (sel) => root.querySelector(sel);
+    const taskEl = el('[data-task]');
+    const input = el('[data-input]');
+    const unitEl = el('[data-unit]');
+    const feedback = el('[data-feedback]');
+    const stepsBox = el('[data-steps]');
+    const showBtn = el('[data-show]');
+    const streakEl = el('[data-streak]');
+
+    const NS = [0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 3, 4, 5];
+    let task = null;
+    let streak = 0;
+    let answered = false;
+
+    const fmt = (x) => String(parseFloat(x.toFixed(3))).replace('.', ',');
+    const formulaOf = (name) => name.split(' ').pop();
+
+    function newTask() {
+      const sub = pool[Math.floor(Math.random() * pool.length)];
+      const n = NS[Math.floor(Math.random() * NS.length)];
+      const type = Math.random() < 0.5 ? 'findN' : 'findM';
+      task = { sub, n, m: n * sub.M, type };
+      answered = false;
+      taskEl.innerHTML =
+        type === 'findN'
+          ? 'Обчисли кількість речовини ' + sub.name + ' масою <b>' + fmt(task.m) + ' г</b>.'
+          : 'Обчисли масу ' + sub.name + ' кількістю речовини <b>' + fmt(n) + ' моль</b>.';
+      unitEl.textContent = type === 'findN' ? 'моль' : 'г';
+      input.value = '';
+      feedback.textContent = '';
+      feedback.className = 'tr-feedback';
+      stepsBox.hidden = true;
+      showBtn.disabled = false;
+    }
+
+    const rightAnswer = () => (task.type === 'findN' ? task.n : task.m);
+
+    function check() {
+      const raw = input.value.trim().replace(',', '.');
+      const val = parseFloat(raw);
+      if (raw === '' || isNaN(val)) {
+        feedback.textContent = 'Введи число — наприклад 0,5';
+        feedback.className = 'tr-feedback tr-bad';
+        return;
+      }
+      const right = rightAnswer();
+      if (Math.abs(val - right) <= Math.max(0.01, right * 0.01)) {
+        if (!answered) { streak++; answered = true; }
+        feedback.textContent = 'Правильно! ' + (streak >= 3 ? 'Серія ' + streak + ' — тему можна здавати! 🔥' : 'Ще одну?');
+        feedback.className = 'tr-feedback tr-good';
+        streakEl.textContent = streak > 0 ? '🔥 серія: ' + streak : '';
+      } else {
+        streak = 0;
+        streakEl.textContent = '';
+        feedback.textContent =
+          'Поки ні. Підказка: M(' + formulaOf(task.sub.name) + ') = ' + task.sub.M +
+          " г/моль. Спробуй ще або відкрий розв'язання.";
+        feedback.className = 'tr-feedback tr-bad';
+      }
+    }
+
+    function showSteps() {
+      el('[data-step-m]').textContent = 'M = ' + task.sub.mText + ' г/моль';
+      if (task.type === 'findN') {
+        el('[data-step-f]').textContent = 'n = m : M = ' + fmt(task.m) + ' г : ' + task.sub.M + ' г/моль';
+        el('[data-step-a]').textContent = 'n = ' + fmt(task.n) + ' моль';
+      } else {
+        el('[data-step-f]').textContent = 'm = n · M = ' + fmt(task.n) + ' моль · ' + task.sub.M + ' г/моль';
+        el('[data-step-a]').textContent = 'm = ' + fmt(task.m) + ' г';
+      }
+      stepsBox.hidden = false;
+      showBtn.disabled = true;
+    }
+
+    el('[data-check]').addEventListener('click', check);
+    el('[data-new]').addEventListener('click', () => { newTask(); input.focus(); });
+    showBtn.addEventListener('click', showSteps);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); check(); } });
+
+    newTask();
+    root._trCleanup = () => { root.dataset.initialized = 'false'; };
+  }
+
+  document.addEventListener('astro:page-load', initTrainer);
+  document.addEventListener('astro:before-swap', () => {
+    const root = document.getElementById(id);
+    if (root && typeof root._trCleanup === 'function') root._trCleanup();
+  });
+  // Скрипт із define:vars Astro завжди лишає inline, тож він виконується
+  // ПОСЕРЕД парсингу сторінки — на цей момент DOM ще 'loading'. На основному
+  // сайті ініціалізацію витягує astro:page-load (View Transitions), а тут
+  // роутера немає, тому потрібен звичайний DOMContentLoaded.
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initTrainer);
+  else initTrainer();
+</script>
+
+<style>
+  .tr-root {
+    max-width: 1000px;
+    width: 92%;
+    margin: 1.5rem auto 0;
+    border: 2px solid #0e7c7b;
+    border-radius: 0.75rem;
+    background: #fff;
+    padding: 1.2rem 1.3rem;
+    text-align: left;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  }
+  .tr-tag {
+    margin: 0 0 0.2rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #0e7c7b;
+  }
+  .tr-title { margin: 0 0 0.3rem; font-size: 1.25rem; font-weight: 800; color: #003049; }
+  .tr-sub { margin: 0 0 0.9rem; font-size: 0.9rem; color: #6c757d; max-width: 58ch; }
+  .tr-task {
+    margin: 0 0 0.8rem;
+    font-size: 1rem;
+    color: #17384f;
+    background: #f7fafd;
+    border: 1px solid #dce7f2;
+    border-radius: 0.6rem;
+    padding: 0.8rem 0.9rem;
+  }
+  .tr-input-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; margin-bottom: 0.6rem; }
+  .tr-input {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 1rem;
+    width: 140px;
+    padding: 0.5rem 0.7rem;
+    border: 1.5px solid #c9d4dc;
+    border-radius: 0.45rem;
+    color: #003049;
+    background: #fff;
+  }
+  .tr-input:focus { outline: 2px solid #1d6fa5; outline-offset: 1px; border-color: transparent; }
+  .tr-unit { font-family: ui-monospace, Menlo, monospace; color: #6c757d; font-size: 0.9rem; }
+  .tr-btn {
+    background: transparent;
+    color: #0e7c7b;
+    border: 1.5px solid #0e7c7b;
+    border-radius: 0.45rem;
+    padding: 0.45rem 0.9rem;
+    font-weight: 600;
+    font-size: 0.88rem;
+    cursor: pointer;
+    transition: background-color 0.15s;
+  }
+  .tr-btn:hover { background: #e7f4f1; }
+  .tr-btn:disabled { opacity: 0.45; cursor: default; }
+  .tr-btn-solid { background: #0e7c7b; color: #fff; }
+  .tr-btn-solid:hover { background: #0a5f5e; }
+  .tr-btn-subtle { border-color: #c9d4dc; color: #6c757d; }
+  .tr-feedback { margin: 0 0 0.5rem; min-height: 1.3rem; font-size: 0.92rem; }
+  .tr-good { color: #1e7b34; font-weight: 600; }
+  .tr-bad { color: #c1121f; }
+  .tr-steps { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.6rem; }
+  .tr-step {
+    border-left: 3px solid #0e7c7b;
+    background: #e7f4f1;
+    border-radius: 0 0.5rem 0.5rem 0;
+    padding: 0.55rem 0.8rem;
+    font-size: 0.92rem;
+    color: #17384f;
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  .tr-step-label {
+    display: block;
+    font-family: system-ui, sans-serif;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #0e7c7b;
+    margin-bottom: 0.1rem;
+  }
+  .tr-step-final { border-left-color: #1e7b34; background: #e9f5ec; }
+  .tr-step-final .tr-step-label { color: #1e7b34; }
+  .tr-bottom { display: flex; align-items: center; gap: 0.7rem; }
+  .tr-streak { font-size: 0.9rem; font-weight: 700; color: #b96e00; }
+
+  .tr-btn:focus-visible, .tr-input:focus-visible { outline: 2px solid #1d6fa5; outline-offset: 2px; }
+
+  @media (max-width: 600px) { .tr-root { width: 98%; padding: 1rem; } }
+
+  /* темна тема */
+  :global(.dark) .tr-root { background: #001f30; border-color: #3cb8af; }
+  :global(.dark) .tr-tag { color: #3cb8af; }
+  :global(.dark) .tr-title { color: #fdf0d5; }
+  :global(.dark) .tr-sub { color: #9fb3c0; }
+  :global(.dark) .tr-task { background: #072a3f; border-color: #14405c; color: #e8eef2; }
+  :global(.dark) .tr-input { background: #072a3f; border-color: #14405c; color: #fdf0d5; }
+  :global(.dark) .tr-unit { color: #9fb3c0; }
+  :global(.dark) .tr-btn { color: #3cb8af; border-color: #3cb8af; }
+  :global(.dark) .tr-btn:hover { background: #10312f; }
+  :global(.dark) .tr-btn-solid { background: #0e7c7b; color: #fff; }
+  :global(.dark) .tr-btn-subtle { border-color: #14405c; color: #9fb3c0; }
+  :global(.dark) .tr-good { color: #5fbf77; }
+  :global(.dark) .tr-bad { color: #ff8a8a; }
+  :global(.dark) .tr-step { background: #10312f; color: #dcece9; border-left-color: #3cb8af; }
+  :global(.dark) .tr-step-label { color: #3cb8af; }
+  :global(.dark) .tr-step-final { background: #143622; border-left-color: #5fbf77; }
+  :global(.dark) .tr-step-final .tr-step-label { color: #5fbf77; }
+  :global(.dark) .tr-streak { color: #e0a140; }
+</style>

@@ -1,0 +1,27 @@
+---
+import { SITE } from '~/data/site';
+const year = new Date().getFullYear();
+---
+
+<footer class="ftr">
+  <div class="wrap ftr__in">
+    <p class="ftr__line">
+      <b>{SITE.domain}</b> — покроковий розбір задач із хімії.
+      Готові відповіді до всіх предметів — на <a href={SITE.parent.url}>halyavka.net</a>.
+    </p>
+    <p class="ftr__small">
+      © {year} Халявка. Розв'язання авторські: ми не перемальовуємо чужі скани, а пишемо розбір самі.
+    </p>
+  </div>
+</footer>
+
+<style>
+  .ftr {
+    margin-top: 2.5rem;
+    border-top: 3px solid var(--red);
+    background: var(--card);
+    padding: 1.2rem 0 1.6rem;
+  }
+  .ftr__line { margin: 0 0 0.4rem; }
+  .ftr__small { margin: 0; font-size: 0.85rem; color: var(--muted); }
+</style>

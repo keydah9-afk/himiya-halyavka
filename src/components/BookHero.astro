@@ -1,0 +1,106 @@
+---
+// Шапка книги: обкладинка, вихідні дані, лічильник розібраних завдань
+// і місток назад на основний сайт — до готових відповідей картинками.
+export interface Props {
+  title: string;
+  authorFull: string;
+  publisher: string;
+  city?: string;
+  year: number;
+  program?: string;
+  grif?: string;
+  cover: string;
+  count: number;
+  updatedAt?: string;
+  mirror?: string;
+  description: string;
+}
+const { title, authorFull, publisher, city, year, program, grif, cover, count, updatedAt, mirror, description } =
+  Astro.props;
+const upd = updatedAt ? new Date(updatedAt).toLocaleDateString('uk-UA') : null;
+---
+
+<section class="hero wrap">
+  <div class="hero__card">
+    <img class="hero__cover" src={cover} alt={`${title} — обкладинка`} width="180" height="255" loading="eager" />
+
+    <div class="hero__body">
+      <h1 class="hero__title">{title}</h1>
+
+      <dl class="hero__meta">
+        <div><dt>Автор</dt><dd>{authorFull}</dd></div>
+        <div><dt>Видавництво</dt><dd>{publisher}{city ? `, ${city}` : ''}</dd></div>
+        <div><dt>Рік</dt><dd>{year}</dd></div>
+        {program && <div><dt>Програма</dt><dd>{program}</dd></div>}
+        <div><dt>Розібрано</dt><dd><b>{count}</b> завдань</dd></div>
+        {upd && <div><dt>Оновлено</dt><dd>{upd}</dd></div>}
+      </dl>
+
+      <p class="hero__desc">{description}</p>
+      {grif && <p class="hero__grif">{grif}</p>}
+
+      {mirror && (
+        <a class="hero__mirror" href={mirror}>
+          ⚡ Потрібна лише готова відповідь, без пояснень? Вона на halyavka.net &rarr;
+        </a>
+      )}
+    </div>
+  </div>
+</section>
+
+<style>
+  .hero { padding-top: 0.6rem; }
+  .hero__card {
+    display: flex;
+    gap: 1.2rem;
+    align-items: flex-start;
+    border: 3px solid var(--red);
+    border-radius: 14px;
+    background: var(--card);
+    padding: 1rem 1.1rem;
+  }
+  .hero__cover {
+    flex: 0 0 auto;
+    width: 180px;
+    height: auto;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  }
+  .hero__body { flex: 1 1 auto; min-width: 0; }
+  .hero__title {
+    margin: 0 0 0.7rem;
+    font-size: 1.6rem;
+    color: var(--red);
+  }
+  .hero__meta {
+    margin: 0 0 0.8rem;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.15rem 0.9rem;
+    font-size: 0.95rem;
+  }
+  .hero__meta > div { display: contents; }
+  .hero__meta dt { color: var(--muted); }
+  .hero__meta dd { margin: 0; }
+  .hero__desc { margin: 0 0 0.5rem; }
+  .hero__grif { margin: 0 0 0.7rem; font-size: 0.82rem; color: var(--muted); }
+  .hero__mirror {
+    display: inline-block;
+    padding: 0.5rem 0.85rem;
+    border: 2px solid var(--red);
+    border-radius: 8px;
+    text-decoration: none;
+    color: var(--navy);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  :global(html.dark) .hero__mirror { color: var(--cream); }
+  .hero__mirror:hover { background: var(--cream); color: var(--navy); }
+
+  @media (max-width: 700px) {
+    .hero__card { flex-direction: column; align-items: center; text-align: center; }
+    .hero__cover { width: 140px; }
+    .hero__meta { justify-content: center; text-align: left; }
+    .hero__title { font-size: 1.35rem; }
+  }
+</style>

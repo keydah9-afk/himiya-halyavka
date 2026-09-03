@@ -1,0 +1,47 @@
+---
+// Крихти + BreadcrumbList. Розмітка одна на сторінку — другий такий блок
+// ставити не можна, інакше в пошуку буде два ланцюжки.
+import { SITE } from '~/data/site';
+
+export interface Props {
+  items: { name: string; href?: string }[];
+}
+const { items } = Astro.props;
+
+const ld = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: items.map((it, i) => ({
+    '@type': 'ListItem',
+    position: i + 1,
+    name: it.name,
+    ...(it.href ? { item: new URL(it.href, SITE.url).href } : {}),
+  })),
+};
+---
+
+<nav class="bc wrap" aria-label="Навігація">
+  {items.map((it, i) => (
+    <>
+      {i > 0 && <span class="bc__sep" aria-hidden="true">›</span>}
+      {it.href ? <a href={it.href}>{it.name}</a> : <span class="bc__cur">{it.name}</span>}
+    </>
+  ))}
+</nav>
+<script type="application/ld+json" set:html={JSON.stringify(ld)} />
+
+<style>
+  .bc {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.7rem 0 0.2rem;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+  .bc a { color: var(--muted); text-decoration: none; }
+  .bc a:hover { color: var(--red); }
+  .bc__sep { opacity: 0.6; }
+  .bc__cur { color: var(--fg); font-weight: 600; }
+</style>
