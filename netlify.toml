@@ -1,6 +1,11 @@
 [build]
   publish = "dist"
-  command = "npm run build"
+  command = "pnpm build"
+
+# У проєкті лежить pnpm-lock.yaml — Netlify сам вмикає pnpm, коли його бачить.
+# Node фіксуємо явно, щоб збірка не поїхала за дефолтом платформи.
+[build.environment]
+  NODE_VERSION = "22"
 
 [build.processing.html]
   pretty_urls = false
