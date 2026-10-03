@@ -37,8 +37,10 @@ export const books: BookEntry[] = [
     authorFull: 'Павло Попель, Людмила Крикля',
     publisher: 'Академія',
     year: 2025,
-    cover: '',
-    ready: false,
+    cover: '/covers/8-himiya-popel-2025.webp',
+    count: 63,
+    progress: 'Стартуємо: § 1 – § 3 (вправи 1–11 у кожному)',
+    ready: true,
     note: 'у роботі',
   },
   {
