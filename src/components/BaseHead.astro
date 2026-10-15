@@ -39,6 +39,17 @@ const blocks = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
 {blocks.map((b) => <script type="application/ld+json" set:html={JSON.stringify(b)} />)}
 
+{/* Google Analytics (GA4). is:inline — Astro не должен ни бандлить, ни переписывать сниппет. */}
+<script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-5BNS9KGNRG"></script>
+<script is:inline>
+  window.dataLayer = window.dataLayer || [];
+  function gtag() {
+    dataLayer.push(arguments);
+  }
+  gtag('js', new Date());
+  gtag('config', 'G-5BNS9KGNRG');
+</script>
+
 {/* Тему ставимо ДО першого малювання, інакше на секунду блимає світлий фон. */}
 <script is:inline>
   (function () {
